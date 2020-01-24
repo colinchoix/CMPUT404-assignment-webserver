@@ -1,5 +1,5 @@
 #  coding: utf-8 
-import socketserver
+import socketserver, os
 # Copyright 2020 Abram Hindle, Eddie Antonio Santos, Colin Choi
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,10 +34,10 @@ def parseRequest(request):
     return (HTTPCommand, HTTPData)
 
 def checkRedirect(requestURI):
-    # TODO check if dir with os then add slash if dir and no trailing slash
-    # Checks if Uri ends with a slash
-    if (requestURI[-1] != "/" and "." not in requestURI.split("/")[-1]):
-        #print(requestURI[-1])
+    # Checks if URI is a directory. If it doesn't have a trailing slash return True
+    path = "www"+requestURI+"/"
+
+    if (requestURI[-1] != "/" and os.path.isdir(path)):
         return True
     else:
         return False
@@ -51,15 +51,7 @@ def respondOK(requestURI):
     header = "HTTP/1.1 200 OK\r\n"
     contentType = "Content-type: "+getContentType(requestURI)+";charset=utf-8\r\n"
     contentLength = "Content-Length: "+ str(len(body))+"\r\n\n"
-
-    '''
-    HTTP/1.0 200 OK
-    Server: SimpleHTTP/0.6 Python/3.5.2
-    Date: Tue, 21 Jan 2020 02:53:04 GMT
-    Content-type: text/html
-    Content-Length: 492
-    Last-Modified: Fri, 10 Jan 2020 23:54:21 GMT
-    '''
+    
     response = header + contentType + contentLength + body
     return response
 
@@ -124,18 +116,40 @@ def getContentType(requestURI):
 
 def getBodyFromPath(requestURI):
 
+    # Files requested will be served from ./www
     root = "./www"
 
+    # Server index.html to paths that ends with /
     if (requestURI[-1] == "/"):
         root += requestURI + "index.html"
     else: 
         root += requestURI
 
+    # Prevent path from accessing file in the parent directories of ./www
+    directories = requestURI.split("/")
+
+    # keep track of how many directories deep we are
+    level = 0
+    for dir in directories:
+
+        if dir != "..":
+            level += 1
+        elif dir == "..":
+            level -= 1
+        
+        # Return a 404 if we try to go out of root directory
+        if level < 0:
+            return -1
+
+
+    # Try to open the requested resource
     try:
         body = open(root).read()
         return body
     except:
         return -1
+
+
 
 class MyWebServer(socketserver.BaseRequestHandler):
     
@@ -147,12 +161,14 @@ class MyWebServer(socketserver.BaseRequestHandler):
         
         # Parse the HTTP request
         request = parseRequest( self.data.decode() )
+        
         # Create a HTTP response to the request
         response = createResponse(request)
+        
         # Send the response
-        #print(response)
         self.request.sendall(response.encode())
 
+        #print(response)
 
 if __name__ == "__main__":
     HOST, PORT = "localhost", 8080
